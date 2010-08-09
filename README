@@ -1,0 +1,4 @@
+The GDS Burp API exposes a Python object interface to requests/responses
+recorded by Burp (whether Proxy/Spider/Repeater, etc).  The API is used to
+parse Burp logs, creating a list of “Burp objects” that contain the request
+and response data and related meta-data.
