@@ -4,4 +4,4 @@ parse Burp logs, creating a list of “Burp objects” that contain the request
 and response data and related meta-data.
 
 For more information see:
-http://www.gdssecurity.com/l/b/2010/08/09/constricting-the-web-the-gds-burp-api/.
+http://www.gdssecurity.com/l/b/2010/08/10/constricting-the-web-the-gds-burp-api/.
