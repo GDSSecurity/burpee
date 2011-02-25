@@ -135,15 +135,16 @@ class Burp(object):
         """
         return self.request['version']
 
-    def get_request_header(self, name):
+    def get_request_header(self, name, default=''):
         """
         Return request header.
 
         @param name: Name of the request header.
+        @param default: Default value to return if header does not exist.
         @return: If header exists returns its value, else an empty string.
         @rtype: string
         """
-        return self.request['headers'].get(name.title(), '')
+        return self.request['headers'].get(name.title(), default)
 
     def get_request_headers(self):
         """
@@ -185,15 +186,16 @@ class Burp(object):
         """
         return self.response['reason']
 
-    def get_response_header(self, name):
+    def get_response_header(self, name, default=''):
         """
         Return response header.
 
         @param name: Name of the response header.
+        @param default: Default value to return if header does not exist.
         @return: If header exists return its value, else an empty string.
         @rtype: string
         """
-        return self.response['headers'].get(name.title(), None)
+        return self.response['headers'].get(name.title(), default)
 
     def get_response_headers(self):
         """
