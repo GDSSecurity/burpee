@@ -209,7 +209,8 @@ class Burp(object):
         """
         Return response body.
 
-        @rtype: string"""
+        @rtype: string
+        """
         return self.response['body']
 
 
