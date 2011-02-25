@@ -134,7 +134,7 @@ def parse_headers(headers):
                 try:
                     processed_headers[header].append(value)
                 except AttributeError:
-                    processed_headers[header] = [value]
+                    processed_headers[header] = [prev, value]
             else:
                 # We've already seen this header and value...
                 # don't process duplicates
