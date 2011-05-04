@@ -31,6 +31,10 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
+HTTP_X_REQUESTED_WITH = 'X-Requested-With'
+HTTP_CONTENT_TYPE = 'Content-Type'
+HTTP_CONTENT_LENGTH = 'Content-Length'
+
 
 class Burp(object):
     """
@@ -88,16 +92,16 @@ class Burp(object):
         # During parsing, we may parse an extra CRLF or two.  So to account
         # for that, we'll just grab the actual content-length from the
         # HTTP header and slice the request/response body appropriately.
-        if self.get_response_header('Content-Length'):
-            content_length = int(self.get_response_header('Content-Length'))
+        if self.get_response_header(HTTP_CONTENT_LENGTH):
+            content_length = int(self.get_response_header(HTTP_CONTENT_LENGTH))
             if len(self) != content_length:
                 #LOGGER.debug("Response content-length differs by %d" % (len(self) - content_length))
                 self.response['body'] = self.response['body'][:content_length]
 
-        if self.get_request_header('Content-Length'):
-            content_length = int(self.get_request_header('Content-Length'))
+        if self.get_request_header(HTTP_CONTENT_LENGTH):
+            content_length = int(self.get_request_header(HTTP_CONTENT_LENGTH))
             if len(self.get_request_body()) != content_length and 'amf' not in \
-                self.get_request_header('Content-Type'):
+                self.get_request_header(HTTP_CONTENT_LENGTH):
                 #LOGGER.debug("Request content-length differs by %d" % (len(self.get_request_body()) - content_length))
                 self.request['body'] = self.request['body'][:content_length]
 
@@ -212,6 +216,36 @@ class Burp(object):
         @rtype: string
         """
         return self.response['body']
+
+
+    # helper property's
+    method = property(get_request_method)
+    status = property(get_response_status)
+    reason = property(get_response_reason)
+
+    @property
+    def is_xhr(self):
+        """
+        Returns True if the request was made via an XMLHttpRequest,
+        by checking the request headers for HTTP_X_REQUESTED_WITH.
+        """
+        return HTTP_X_REQUESTED_WITH in self.get_request_headers()
+
+    @property
+    def is_secure(self):
+        """
+        Returns True if the request is secure; that is, if it was made
+        with HTTPS.
+        """
+        return self.url.scheme == 'https'
+
+    @property
+    def is_multipart(self):
+        """
+        Indicates whether the request is a Multipart request according
+        to RFC2388.
+        """
+        return self.get_request_header(HTTP_CONTENT_TYPE).startswith('multipart/')
 
 
 class Scanner(object):
