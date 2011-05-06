@@ -27,6 +27,7 @@ along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 from urlparse import urljoin, urlparse
 from utils import parse_headers, parse_parameters
 import copy
+import datetime
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -68,7 +69,20 @@ class Burp(object):
         """
         self.host = data.get('host', None)
         self.ip_address = data.get('ip_address', None)
-        self.time = data.get('time', None)
+        self.req_time = req_time = data.get('time', None)
+        if req_time:
+            try:
+                r_time, am_pm = req_time.split()
+                hour, min, sec = map(int, r_time.split(":"))
+                if hour < 12 and am_pm == 'PM':
+                    hour += 12
+                elif hour == 12 and am_pm == 'AM':
+                    hour = 0
+
+                self.time = datetime.time(hour, min, sec)
+            except ValueError:
+                LOGGER.exception("Invalid time struct %r", req_time)
+                self.time = datetime.time()
 
         self.request.update({
              'method': data['request'].get('method'),
