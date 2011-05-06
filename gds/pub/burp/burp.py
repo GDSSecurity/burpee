@@ -52,8 +52,8 @@ class Burp(object):
         self.host = None
         self.ip_address = None
         self.time = None
-        self.request = {}
-        self.response = {}
+        self._request = {}
+        self._response = {}
         self.url = None
         self.parameters = {}
         self.replayed = []
@@ -84,7 +84,7 @@ class Burp(object):
                 LOGGER.exception("Invalid time struct %r", req_time)
                 self.time = datetime.time()
 
-        self.request.update({
+        self._request.update({
              'method': data['request'].get('method'),
              'path': data['request'].get('path'),
              'version': data['request'].get('version'),
@@ -92,7 +92,7 @@ class Burp(object):
              'body': data['request'].get('body', ""),
             })
 
-        self.response.update({
+        self._response.update({
              'version': data['response'].get('version'),
              'status': int(data['response'].get('status', 0)),
              'reason': data['response'].get('reason'),
@@ -100,7 +100,7 @@ class Burp(object):
              'body': data['response'].get('body', ""),
             })
 
-        self.url = urlparse(urljoin(self.host, self.request.get('path')))
+        self.url = urlparse(urljoin(self.host, self._request.get('path', '/')))
         self.parameters = parse_parameters(self)
 
         # During parsing, we may parse an extra CRLF or two.  So to account
@@ -110,14 +110,14 @@ class Burp(object):
             content_length = int(self.get_response_header(HTTP_CONTENT_LENGTH))
             if len(self) != content_length:
                 #LOGGER.debug("Response content-length differs by %d" % (len(self) - content_length))
-                self.response['body'] = self.response['body'][:content_length]
+                self._response['body'] = self._response['body'][:content_length]
 
         if self.get_request_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_request_header(HTTP_CONTENT_LENGTH))
             if len(self.get_request_body()) != content_length and 'amf' not in \
                 self.get_request_header(HTTP_CONTENT_LENGTH):
                 #LOGGER.debug("Request content-length differs by %d" % (len(self.get_request_body()) - content_length))
-                self.request['body'] = self.request['body'][:content_length]
+                self._request['body'] = self._request['body'][:content_length]
 
     def __len__(self):
         """
@@ -135,7 +135,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.request['body']
+        return self._request['body']
 
     def get_request_method(self):
         """
@@ -143,7 +143,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.request['method']
+        return self._request['method']
 
     def get_request_version(self):
         """
@@ -151,7 +151,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.request['version']
+        return self._request['version']
 
     def get_request_header(self, name, default=''):
         """
@@ -162,7 +162,7 @@ class Burp(object):
         @return: If header exists returns its value, else an empty string.
         @rtype: string
         """
-        return self.request['headers'].get(name.title(), default)
+        return self._request['headers'].get(name.title(), default)
 
     def get_request_headers(self):
         """
@@ -170,7 +170,7 @@ class Burp(object):
 
         @rtype: dict
         """
-        return self.request['headers']
+        return self._request['headers']
 
     def get_request_path(self):
         """
@@ -178,7 +178,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.request['path']
+        return self._request['path']
 
     def get_response_version(self):
         """
@@ -186,7 +186,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.response['version']
+        return self._response['version']
 
     def get_response_status(self):
         """
@@ -194,7 +194,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.response['status']
+        return self._response['status']
 
     def get_response_reason(self):
         """
@@ -202,7 +202,7 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.response['reason']
+        return self._response['reason']
 
     def get_response_header(self, name, default=''):
         """
@@ -213,7 +213,7 @@ class Burp(object):
         @return: If header exists return its value, else an empty string.
         @rtype: string
         """
-        return self.response['headers'].get(name.title(), default)
+        return self._response['headers'].get(name.title(), default)
 
     def get_response_headers(self):
         """
@@ -221,7 +221,7 @@ class Burp(object):
 
         @rtype: dict
         """
-        return self.response['headers']
+        return self._response['headers']
 
     def get_response_body(self):
         """
@@ -229,11 +229,17 @@ class Burp(object):
 
         @rtype: string
         """
-        return self.response['body']
+        return self._response['body']
 
 
-    # helper property's
+    # request helper property's
+    body = property(get_request_body)
+    headers = property(get_request_headers)
     method = property(get_request_method)
+
+    # response helper property's
+    response = property(get_response_body)
+    response_headers = property(get_response_headers)
     status = property(get_response_status)
     reason = property(get_response_reason)
 
