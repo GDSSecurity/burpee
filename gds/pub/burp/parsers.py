@@ -27,6 +27,7 @@ along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 from gds.pub.burp import Burp
 import datetime
 import logging
+import os
 import re
 
 CRLF = "\r\n"
@@ -38,9 +39,9 @@ HEADER = re.compile('(\d{1,2}:\d{2}:\d{2} (AM|PM))[ \t]+(\S+)([ \t]+\[(\d{1,3}\.
 LOGGER = logging.getLogger(__name__)
 
 
-def forward_buffer(buffer, pos, n, token):
+def forward_buffer(buf, pos, n, token):
     """
-    Advance buffer from current position by n bytes while buffer is not equal
+    Advance buf from current position by n bytes while buf is not equal
     to token.
 
     @param buffer: String
@@ -50,7 +51,7 @@ def forward_buffer(buffer, pos, n, token):
     @return: Position of buffer at token.
     @rtype: int
     """
-    while buffer[pos:pos + n] != token:
+    while buf[pos:pos + n] != token:
         pos += 1
 
     return pos
@@ -66,24 +67,39 @@ def parse(burp_log):
     @rtype: list
     """
 
-    try:
+    if burp_log in os.listdir('.'):
         burp_file = None
-        burp_file = open(burp_log, 'rb')
-        buf = burp_file.read()
+        try:
+            if os.path.isfile(burp_log):
+                LOGGER.debug("Attempting to read from %r", burp_log)
+                burp_file = open(burp_log, 'rb')
+                buf = burp_file.read()
 
-    except TypeError:
-        LOGGER.exception("Exception occurred trying to read %s" % burp_log)
+        except IOError:
+            LOGGER.exception("Exception occured trying to read %r", burp_log)
+            return None
+
+        except TypeError:
+            LOGGER.exception("Exception occured trying to read %r", burp_log)
+
+        finally:
+            if burp_file is not None:
+                burp_file.close()
+
+    elif hasattr(burp_log, 'read'):
+        try:
+            LOGGER.debug("Attempting to read from %r", burp_log)
+            buf = burp_log.read()
+        except:
+            LOGGER.exception("Exception occured trying to read from type: %r",
+                             type(burp_log))
+            return None
+
+    elif isinstance(burp_log, basestring):
+        LOGGER.debug("Argument passed appears to be the burp log as a string")
         buf = burp_log
 
-    except IOError:
-        LOGGER.exception("Exception occurred trying to open %s" % burp_log)
-        return None
-
-    finally:
-        if burp_file:
-            burp_file.close()
-
-    LOGGER.debug("Parsing started at " +  datetime.datetime.now().isoformat())
+    LOGGER.debug("Parsing started at %s", datetime.datetime.now().isoformat())
 
     parsed = []
     history = 'START'
@@ -223,10 +239,10 @@ def parse(burp_log):
         # labs@gdssecurity.com an email with the error message and if possible
         # a sanitized proxy log.
         except:
-            LOGGER.exception("Parsing exception occurred at index/pos: %d/%d" %
-                             (req, pos))
+            LOGGER.exception("Parsing exception occurred at index/pos: %d/%d",
+                             req, pos)
             pos += 1
 
-    LOGGER.debug("Parsing completed at " +  datetime.datetime.now().isoformat())
+    LOGGER.debug("Parsing completed at %s", datetime.datetime.now().isoformat())
     return parsed
 
