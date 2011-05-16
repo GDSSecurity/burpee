@@ -67,37 +67,45 @@ def parse(burp_log):
     @rtype: list
     """
 
-    if burp_log in os.listdir('.'):
-        burp_file = None
-        try:
-            if os.path.isfile(burp_log):
-                LOGGER.debug("Attempting to read from %r", burp_log)
-                burp_file = open(burp_log, 'rb')
-                buf = burp_file.read()
+    burp_file = None
 
-        except IOError:
-            LOGGER.exception("Exception occured trying to read %r", burp_log)
-            return None
-
-        except TypeError:
-            LOGGER.exception("Exception occured trying to read %r", burp_log)
-
-        finally:
-            if burp_file is not None:
-                burp_file.close()
-
-    elif hasattr(burp_log, 'read'):
-        try:
+    try:
+        if os.path.exists(burp_log):
             LOGGER.debug("Attempting to read from %r", burp_log)
-            buf = burp_log.read()
-        except:
-            LOGGER.exception("Exception occured trying to read from type: %r",
-                             type(burp_log))
-            return None
+            burp_file = open(burp_log, 'rb')
+            buf = burp_file.read()
 
-    elif isinstance(burp_log, basestring):
-        LOGGER.debug("Argument passed appears to be the burp log as a string")
-        buf = burp_log
+    except (IOError, TypeError):
+        if hasattr(burp_log, 'read'):
+            try:
+                LOGGER.debug("Attempting to read from %r", burp_log)
+                buf = burp_log.read()
+
+                if not buf:
+                    if hasattr(burp_log, 'tell') and hasattr(burp_log, 'seek'):
+                        LOGGER.debug("File's current position is %d, not 0",
+                                     burp_log.tell())
+                        burp_log.seek(0)
+                        buf = burp_log.read()
+                    else:
+                        raise ValueError("burp_log contains no data")
+
+            except (IOError, TypeError):
+                LOGGER.exception("Exception occured trying to read from type: %r",
+                                 type(burp_log))
+                return None
+
+        elif isinstance(burp_log, basestring):
+            LOGGER.debug("burp_log appears to be a string")
+            buf = burp_log
+
+        else:
+            raise TypeError("burp_log must be a string or file-like object that "
+                            "implements a read() method.")
+
+    finally:
+        if burp_file is not None:
+            burp_file.close()
 
     LOGGER.debug("Parsing started at %s", datetime.datetime.now().isoformat())
 
