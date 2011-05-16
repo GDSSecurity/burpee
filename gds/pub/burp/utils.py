@@ -24,6 +24,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
+from .multipart import HTMLMultipartForm, HTMLMultipartParam
 import cgi
 import logging
 import cPickle
@@ -31,14 +32,27 @@ import gzip
 import hashlib
 import hmac
 import json
+import os
 import re
-
-# compile regular expression to match multipart form parameters
-BOUNDARY = re.compile('Content-Disposition: form-data; name="([^"]+)', re.I)
-FORM_DATA = re.compile('multipart/form-data; boundary=([a-z0-9\-]+)', re.I)
+try:
+    import pyamf
+except ImportError:
+    pyamf = None
 
 KEY = 'gds.burp'
 LOGGER = logging.getLogger(__name__)
+
+
+#############################  Content Types  ##############################
+FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded'
+JSON_CONTENT_TYPE = 'application/json'
+XML_CONTENT_TYPE = 'application/xml'
+
+
+# compile regular expression to match multipart form parameters
+BOUNDARY = re.compile('Content-Disposition: form-data; name="([^"]+)', re.I)
+FORM_DATA = re.compile('multipart/(form-data|mixed|related); *boundary="?([A-Za-z0-9-]+)"?', re.I)
+CRLF = '\r\n'
 
 
 def parse_parameters(request):
@@ -57,30 +71,46 @@ def parse_parameters(request):
 
     content_type = request.get_request_header('Content-Type')
 
-    if 'amf' in content_type.lower():
-        # Don't even try to parse a binary AMF request
-        return
-
-    elif 'multipart/form-data' in content_type.lower():
-        boundary = re.search(FORM_DATA, content_type).group(1)
-        params = parse_multipart_form(request.get_request_body(), boundary)
-        parameters['multipart_form'] = params
-
-    elif 'json' in content_type.lower():
-        parameters['json'] = json.loads(request.get_request_body())
-
-    elif request.get_request_body():
+    if content_type.lower() == FORM_CONTENT_TYPE:
         parameters['body'] = dict(cgi.parse_qsl(request.get_request_body()))
 
+    elif content_type.lower() in (JSON_CONTENT_TYPE,
+                                  'application/x-javascript',
+                                  'text/javascript',
+                                  'text/x-javascript',
+                                  'text/x-json'):
+        try:
+            parameters['json'] = json.loads(request.get_request_body())
+        except TypeError:
+            pass
+
+    elif content_type.lower() == 'application/x-amf':
+        # Don't even try to parse a binary AMF request
+        # if pyamf:continue
+        pass
+
+    elif content_type.lower().startswith('multipart'):
+        boundary = get_boundary(content_type)
+        multipart_data = parse_multipart_form(request.get_request_body(), boundary)
+        parameters['multipart'] = multipart_data
+
     return parameters
+
+
+def get_boundary(header=None):
+    if header is None:
+        return os.urandom(7).encode('hex').rjust(40, '-')
+
+    boundary = FORM_DATA.search(header)
+    if boundary:
+        return boundary.group(2)
+    else:
+        return None
 
 
 def parse_multipart_form(content, multipart_boundary):
     """
     Parses multipart/form-data.
-
-    This needs more testing, as I'm not sure all browsers make multipart form
-    requests that are in this format.
 
     @param content: The multipart/form-data content from HTTP request.
     @param multipart_boundary: The boundary specifier as declared in the HTTP
@@ -88,20 +118,55 @@ def parse_multipart_form(content, multipart_boundary):
     @return: A dict containing parameters and values.
     @rtype: dict
     """
+
+    def _parse(part):
+        idx = part.find(CRLF*2)
+        headers, body = part[:idx], part[idx+4:]
+
+        headers = headers.splitlines()
+        if len(headers) > 1:
+            # we have headers
+            disposition = headers[0]
+            headers = CRLF.join(headers[1:])
+        else:
+            disposition = headers.pop()
+
+        disposition, fields = disposition.split(';', 1)
+        disposition = disposition.split(':')[0].strip()
+
+        if body[-2:] == CRLF:
+            body = body[:-2]
+
+        params = {}
+        for field in fields.split(';'):
+            key, value = field.split('=', 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            params[key] = value
+
+        headers = parse_headers(headers)
+
+        if headers.get('Content-Type', '').startswith('multipart'):
+            sub_boundary = get_boundary(headers.get('Content-Type', ''))
+            if sub_boundary:
+                body = parse_multipart_form(body, sub_boundary)
+
+        name = params.pop('name', '')
+
+        #return (name, params, headers, body)
+        return HTMLMultipartParam(name, params, headers, body)
+
+    parts = []
+
     # each boundary is prefixed by two dashes
     multipart_boundary = '--' + multipart_boundary
 
     # snip leading boundary and trailing boundaries
-    post = content.split(multipart_boundary)[1:-1]
+    for part in content.split(multipart_boundary)[1:-1]:
+        parts.append(_parse(part.lstrip(CRLF)))
 
-    # match the name parameter against each multipart form boundary in post
-    params = [BOUNDARY.search(param).group(1) for param in post]
-
-    # strip the first part of the form boundary preceding the two CRLF's
-    # remove any trailing whitespace from the multipart form parameter value
-    values = [value.split('\r\n\r\n', 1)[1].rstrip() for value in post]
-
-    return dict(zip(params, values))
+    #return parts
+    return HTMLMultipartForm(multipart_boundary, *parts)
 
 
 def parse_headers(headers):
@@ -122,7 +187,6 @@ def parse_headers(headers):
 
         for header, value in header_values:
             header = header.title().strip()
-            #value = safeint(value)
             value = value.strip()
 
             prev = processed_headers.get(header)
@@ -130,7 +194,6 @@ def parse_headers(headers):
             if prev is None:
                 processed_headers[header] = value
             elif prev != value:
-                #processed_headers[header] += ", " + value
                 try:
                     processed_headers[header].append(value)
                 except AttributeError:
