@@ -24,10 +24,11 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
+from .utils import parse_headers, parse_parameters
+from datetime import time as _time
+from datetime import datetime as _datetime
 from urlparse import urljoin, urlparse
-from utils import parse_headers, parse_parameters
 import copy
-import datetime
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -51,7 +52,8 @@ class Burp(object):
         self.index = index
         self.host = None
         self.ip_address = None
-        self.time = None
+        self.burptime = None
+        self.datetime = None
         self._request = {}
         self._response = {}
         self.url = None
@@ -61,7 +63,7 @@ class Burp(object):
         if hasattr(data, 'items'):
             self.__process(data)
 
-        LOGGER.debug("Burp object created: %d" % self.index)
+        LOGGER.debug("Burp object created: %d", self.index)
 
     def __process(self, data):
         """
@@ -69,26 +71,12 @@ class Burp(object):
         """
         self.host = data.get('host', None)
         self.ip_address = data.get('ip_address', None)
-        self.req_time = req_time = data.get('time', None)
-        if req_time:
-            try:
-                r_time, am_pm = req_time.split()
-                hour, min, sec = map(int, r_time.split(":"))
-                if hour < 12 and am_pm == 'PM':
-                    hour += 12
-                elif hour == 12 and am_pm == 'AM':
-                    hour = 0
-
-                self.time = datetime.time(hour, min, sec)
-            except ValueError:
-                LOGGER.exception("Invalid time struct %r", req_time)
-                self.time = datetime.time()
 
         self._request.update({
              'method': data['request'].get('method'),
              'path': data['request'].get('path'),
              'version': data['request'].get('version'),
-             'headers': parse_headers(data['request'].get('headers')),
+             'headers': parse_headers(data['request'].get('headers', {})),
              'body': data['request'].get('body', ""),
             })
 
@@ -96,9 +84,44 @@ class Burp(object):
              'version': data['response'].get('version'),
              'status': int(data['response'].get('status', 0)),
              'reason': data['response'].get('reason'),
-             'headers': parse_headers(data['response'].get('headers')),
+             'headers': parse_headers(data['response'].get('headers', {})),
              'body': data['response'].get('body', ""),
             })
+
+        if 'Date' in self.response_headers:
+            # NOTE: the HTTP-date should represent the best available
+            # approximation of the date and time of message generation.
+            # See: http://tools.ietf.org/html/rfc2616#section-14.18
+            #
+            # This doesn't always indicate the exact datetime the response
+            # was served, i.e., cached pages might have a Date header
+            # that occurrs in the past.
+            req_date = self.get_response_header('Date')
+
+            try:
+                self.datetime = _datetime.strptime(req_date,
+                                                   '%a, %d %b %Y %H:%M:%S %Z')
+            except (ValueError, TypeError):
+                LOGGER.exception("Invalid time struct %r", req_date)
+                self.datetime = None
+
+        self.burptime = data.get('time', None)
+
+        if self.burptime:
+            # Let's take Burp's recorded time and stuff that into a 
+            # datetime.time object.
+            try:
+                r_time, am_pm = self.burptime.split()
+                hour, minute, second = map(int, r_time.split(":"))
+                if hour < 12 and am_pm == 'PM':
+                    hour += 12
+                elif hour == 12 and am_pm == 'AM':
+                    hour = 0
+
+                self.time = _time(hour, minute, second)
+            except ValueError:
+                LOGGER.exception("Invalid time struct %r", self.burptime)
+                self.time = _time()
 
         self.url = urlparse(urljoin(self.host, self._request.get('path', '/')))
         self.parameters = parse_parameters(self)
@@ -109,14 +132,14 @@ class Burp(object):
         if self.get_response_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_response_header(HTTP_CONTENT_LENGTH))
             if len(self) != content_length:
-                #LOGGER.debug("Response content-length differs by %d" % (len(self) - content_length))
+                #LOGGER.debug("Response content-length differs by %d", len(self) - content_length)
                 self._response['body'] = self._response['body'][:content_length]
 
         if self.get_request_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_request_header(HTTP_CONTENT_LENGTH))
             if len(self.get_request_body()) != content_length and 'amf' not in \
                 self.get_request_header(HTTP_CONTENT_LENGTH):
-                #LOGGER.debug("Request content-length differs by %d" % (len(self.get_request_body()) - content_length))
+                #LOGGER.debug("Request content-length differs by %d", len(self.get_request_body()) - content_length)
                 self._request['body'] = self._request['body'][:content_length]
 
     def __len__(self):
@@ -266,6 +289,48 @@ class Burp(object):
         to RFC2388.
         """
         return self.get_request_header(HTTP_CONTENT_TYPE).startswith('multipart/')
+
+    @property
+    def is_delete(self):
+        """
+        Returns True if this request was made using the DELETE method.
+        """
+        return self.method == "DELETE"
+
+    @property
+    def is_get(self):
+        """
+        Returns True if this request was made using the GET method.
+        """
+        return self.method == "GET"
+
+    @property
+    def is_options(self):
+        """
+        Returns True if this request was made using the OPTIONS method.
+        """
+        return self.method == "OPTIONS"
+
+    @property
+    def is_post(self):
+        """
+        Returns True if this request was made using the POST method.
+        """
+        return self.method == "POST"
+
+    @property
+    def is_put(self):
+        """
+        Returns True if this request was made using the PUT method.
+        """
+        return self.method == "PUT"
+
+    @property
+    def is_trace(self):
+        """
+        Returns True if this request was made using the TRACE method.
+        """
+        return self.method == "TRACE"
 
 
 class Scanner(object):
