@@ -24,8 +24,15 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
-from .utils import CRLF
 from urllib import quote_plus
+
+
+__all__ = ['HTMLMultipartForm',
+           'HTMLMultipartParam',
+          ]
+
+
+CRLF = '\r\n'
 
 
 class HTMLMultipartForm(object):
