@@ -25,6 +25,7 @@ You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
 from .multipart import HTMLMultipartForm, HTMLMultipartParam
+from .structures import CaseInsensitiveDict
 import cgi
 import logging
 import cPickle
@@ -188,9 +189,9 @@ def parse_headers(headers):
     @rtype: dict
     """
     if not headers:
-        return {}
+        return CaseInsensitiveDict()
 
-    processed_headers = {}
+    processed_headers = CaseInsensitiveDict()
 
     try:
         header_values = [h.split(':', 1) for h in headers.strip().split('\r\n')]
