@@ -24,7 +24,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
-from gds.pub.burp import Burp
+from .burp import Burp
+from .utils import NullHandler
 import datetime
 import logging
 import os
@@ -36,7 +37,8 @@ CRLF_DELIMITER = CRLF + DELIMITER
 HEADER = re.compile('(\d{1,2}:\d{2}:\d{2} (AM|PM))[ \t]+(\S+)([ \t]+\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|unknown host)\])?')
 
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.addHandler(NullHandler())
 
 
 def forward_buffer(buf, pos, n, token):
@@ -71,19 +73,19 @@ def parse(burp_log):
 
     try:
         if os.path.exists(burp_log):
-            LOGGER.debug("Attempting to read from %r", burp_log)
+            logger.debug("Attempting to read from %r", burp_log)
             burp_file = open(burp_log, 'rb')
             buf = burp_file.read()
 
     except (IOError, TypeError):
         if hasattr(burp_log, 'read'):
             try:
-                LOGGER.debug("Attempting to read from %r", burp_log)
+                logger.debug("Attempting to read from %r", burp_log)
                 buf = burp_log.read()
 
                 if not buf:
                     if hasattr(burp_log, 'tell') and hasattr(burp_log, 'seek'):
-                        LOGGER.debug("File's current position is %d, not 0",
+                        logger.debug("File's current position is %d, not 0",
                                      burp_log.tell())
                         burp_log.seek(0)
                         buf = burp_log.read()
@@ -91,12 +93,12 @@ def parse(burp_log):
                         raise ValueError("burp_log contains no data")
 
             except (IOError, TypeError):
-                LOGGER.exception("Exception occured trying to read from type: %r",
+                logger.exception("Exception occured trying to read from type: %r",
                                  type(burp_log))
                 return None
 
         elif isinstance(burp_log, basestring):
-            LOGGER.debug("burp_log appears to be a string")
+            logger.debug("burp_log appears to be a string")
             buf = burp_log
 
         else:
@@ -107,7 +109,7 @@ def parse(burp_log):
         if burp_file is not None:
             burp_file.close()
 
-    LOGGER.debug("Parsing started at %s", datetime.datetime.now().isoformat())
+    logger.debug("Parsing started at %s", datetime.datetime.now().isoformat())
 
     parsed = []
     history = 'START'
@@ -246,11 +248,11 @@ def parse(burp_log):
         # If this is a legit exception due to incorrect parsing, please send
         # labs@gdssecurity.com an email with the error message and if possible
         # a sanitized proxy log.
-        except:
-            LOGGER.exception("Parsing exception occurred at index/pos: %d/%d",
+        except Exception:
+            logger.exception("Parsing exception occurred at index/pos: %d/%d",
                              req, pos)
             pos += 1
 
-    LOGGER.debug("Parsing completed at %s", datetime.datetime.now().isoformat())
+    logger.debug("Parsing completed at %s", datetime.datetime.now().isoformat())
     return parsed
 

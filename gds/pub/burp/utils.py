@@ -39,8 +39,18 @@ try:
 except ImportError:
     pyamf = None
 
+try:
+    from logging.handlers import NullHandler
+except ImportError:
+    class NullHandler(logging.Handler):
+        def emit(self, msg):
+            pass
+
+
 KEY = 'gds.burp'
-LOGGER = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+logger.addHandler(NullHandler())
 
 
 #############################  Content Types  ##############################
@@ -243,9 +253,9 @@ def save_state(filename, parsed_burp_log):
         gzf = gzip.open(filename, 'wb')
         gzf.write(state)
         gzf.close()
-        LOGGER.debug("Saved state to " + filename)
-    except IOError, e:
-        LOGGER.error("Could not save to %s (%s)" + (filename, e))
+        logger.debug("Saved state to ", filename)
+    except IOError:
+        logger.exception("Could not save to %s", filename)
         return
 
 
@@ -261,14 +271,14 @@ def load_state(filename):
     @return: A parsed Burp Suite log.
     @rtype: list
     """
-    LOGGER.debug("Loading state from " + filename)
+    logger.debug("Loading state from %s", filename)
 
     try:
         gzf = gzip.open(filename, 'rb')
         state = gzf.read()
         gzf.close()
-    except IOError, e:
-        LOGGER.error("%s: %s" % (e, filename))
+    except IOError:
+        logger.exception("Could not gunzip %s", filename)
         return
 
     # A sha1 digest is 20 bytes.
@@ -287,11 +297,11 @@ def load_state(filename):
 
     if is_equal(hmac.new(KEY, dump, hashlib.sha1).digest(), mac):
         parsed = cPickle.loads(dump)
-        LOGGER.debug("Loaded state from " + filename)
+        logger.debug("Loaded state from %s", filename)
         return parsed
 
     else:
-        LOGGER.error("Incorrect checksum while loading state from " + filename)
+        logger.error("Incorrect checksum while loading state from %s", filename)
         raise cPickle.UnpicklingError("Incorrect checksum while loading state")
 
 
