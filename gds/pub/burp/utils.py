@@ -80,29 +80,36 @@ def parse_parameters(request):
     if request.url.query:
         parameters['query'] = dict(cgi.parse_qsl(request.url.query))
 
-    content_type = request.get_request_header('Content-Type')
+    content_type = request.get_request_header('Content-Type').lower()
+    content_type, params = cgi.parse_header(content_type)
+    body = request.get_request_body()
 
-    if content_type.lower() == FORM_CONTENT_TYPE:
-        parameters['body'] = dict(cgi.parse_qsl(request.get_request_body()))
-
-    elif content_type.lower() in (JSON_CONTENT_TYPE,
-                                  'application/x-javascript',
-                                  'text/javascript',
-                                  'text/x-javascript',
-                                  'text/x-json'):
+    if params.get('charset'):
         try:
-            parameters['json'] = json.loads(request.get_request_body())
+            body = body.decode(params.get('charset'))
+        except UnicodeDecodeError:
+            pass
+
+    if content_type == FORM_CONTENT_TYPE:
+        parameters['body'] = dict(cgi.parse_qsl(body))
+
+    elif content_type in (JSON_CONTENT_TYPE,
+                          'application/x-javascript',
+                          'text/javascript',
+                          'text/x-javascript',
+                          'text/x-json'):
+        try:
+            parameters['json'] = json.loads(body)
         except TypeError:
             pass
 
-    elif content_type.lower() == 'application/x-amf':
+    elif content_type == 'application/x-amf':
         # Don't even try to parse a binary AMF request
         # if pyamf:continue
         pass
 
-    elif content_type.lower().startswith('multipart'):
-        boundary = get_boundary(content_type)
-        multipart_data = parse_multipart_form(request.get_request_body(), boundary)
+    elif content_type.startswith('multipart') and params.get('boundary'):
+        multipart_data = parse_multipart_form(body, params.get('boundary'))
         parameters['multipart'] = multipart_data
 
     return parameters
@@ -112,11 +119,8 @@ def get_boundary(header=None):
     if header is None:
         return os.urandom(7).encode('hex').rjust(40, '-')
 
-    boundary = FORM_DATA.search(header)
-    if boundary:
-        return boundary.group(2)
-    else:
-        return None
+    boundary = cgi.parse_header(header)[1].get('boundary', '')
+    return boundary
 
 
 def parse_multipart_form(content, multipart_boundary):
