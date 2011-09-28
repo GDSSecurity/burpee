@@ -201,7 +201,7 @@ def parse_headers(headers):
         header_values = [h.split(':', 1) for h in headers.strip().split('\r\n')]
 
         for header, value in header_values:
-            header = header.title().strip()
+            header = header.strip()
             value = value.strip()
 
             prev = processed_headers.get(header)
