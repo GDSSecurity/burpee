@@ -24,9 +24,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
-from burp import Burp
-from parsers import parse
-from utils import load_state, save_state
+from .burp import Burp
+from .parsers import parse
+from .utils import load_state, save_state
 
 __author__ = 'Marcin Wielgoszewski'
 __contact__ = 'labs@gdssecurity.com'

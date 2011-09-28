@@ -24,14 +24,17 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
-from .utils import parse_headers, parse_parameters
+from .structures import CaseInsensitiveDict
+from .utils import parse_headers, parse_parameters, NullHandler
 from datetime import time as _time
 from datetime import datetime as _datetime
 from urlparse import urljoin, urlparse
+import Cookie
 import copy
 import logging
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.addHandler(NullHandler())
 
 HTTP_X_REQUESTED_WITH = 'X-Requested-With'
 HTTP_CONTENT_TYPE = 'Content-Type'
@@ -54,16 +57,18 @@ class Burp(object):
         self.ip_address = None
         self.burptime = None
         self.datetime = None
+        self.time = None
         self._request = {}
         self._response = {}
         self.url = None
         self.parameters = {}
+        self.cookies = Cookie.SimpleCookie()
         self.replayed = []
 
         if hasattr(data, 'items'):
             self.__process(data)
 
-        LOGGER.debug("Burp object created: %d", self.index)
+        logger.debug("Burp object created: %d", self.index)
 
     def __process(self, data):
         """
@@ -76,7 +81,7 @@ class Burp(object):
              'method': data['request'].get('method'),
              'path': data['request'].get('path'),
              'version': data['request'].get('version'),
-             'headers': parse_headers(data['request'].get('headers', {})),
+             'headers': parse_headers(data['request'].get('headers', CaseInsensitiveDict())),
              'body': data['request'].get('body', ""),
             })
 
@@ -84,11 +89,11 @@ class Burp(object):
              'version': data['response'].get('version'),
              'status': int(data['response'].get('status', 0)),
              'reason': data['response'].get('reason'),
-             'headers': parse_headers(data['response'].get('headers', {})),
+             'headers': parse_headers(data['response'].get('headers', CaseInsensitiveDict())),
              'body': data['response'].get('body', ""),
             })
 
-        if 'Date' in self.response_headers:
+        if self.get_response_header('Date'):
             # NOTE: the HTTP-date should represent the best available
             # approximation of the date and time of message generation.
             # See: http://tools.ietf.org/html/rfc2616#section-14.18
@@ -102,7 +107,7 @@ class Burp(object):
                 self.datetime = _datetime.strptime(req_date,
                                                    '%a, %d %b %Y %H:%M:%S %Z')
             except (ValueError, TypeError):
-                LOGGER.exception("Invalid time struct %r", req_date)
+                logger.exception("Invalid time struct %r", req_date)
                 self.datetime = None
 
         self.burptime = data.get('time', None)
@@ -120,11 +125,23 @@ class Burp(object):
 
                 self.time = _time(hour, minute, second)
             except ValueError:
-                LOGGER.exception("Invalid time struct %r", self.burptime)
+                logger.exception("Invalid time struct %r", self.burptime)
                 self.time = _time()
 
         self.url = urlparse(urljoin(self.host, self._request.get('path', '/')))
         self.parameters = parse_parameters(self)
+
+        logger.debug("Loading cookies: %s", self.get_request_header('Cookie'))
+
+        try:
+            self.cookies.load(self.get_request_header('Cookie'))
+        except Cookie.CookieError:
+            logger.exception("Failed to load Cookie: %r into cookie jar",
+                             self.get_request_header('Cookie'))
+
+        if self.cookies:
+            logger.debug("Added following cookies: %s",
+                         ', '.join(self.cookies.keys()))
 
         # During parsing, we may parse an extra CRLF or two.  So to account
         # for that, we'll just grab the actual content-length from the
@@ -132,14 +149,16 @@ class Burp(object):
         if self.get_response_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_response_header(HTTP_CONTENT_LENGTH))
             if len(self) != content_length:
-                #LOGGER.debug("Response content-length differs by %d", len(self) - content_length)
+                #logger.debug("Response content-length differs by %d",
+                #             len(self) - content_length)
                 self._response['body'] = self._response['body'][:content_length]
 
         if self.get_request_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_request_header(HTTP_CONTENT_LENGTH))
-            if len(self.get_request_body()) != content_length and 'amf' not in \
-                self.get_request_header(HTTP_CONTENT_LENGTH):
-                #LOGGER.debug("Request content-length differs by %d", len(self.get_request_body()) - content_length)
+            if len(self.get_request_body()) != content_length and \
+                'amf' not in self.get_request_header(HTTP_CONTENT_TYPE):
+                #logger.debug("Request content-length differs by %d",
+                #             len(self.get_request_body()) - content_length)
                 self._request['body'] = self._request['body'][:content_length]
 
     def __len__(self):
@@ -150,7 +169,7 @@ class Burp(object):
         return len(self.get_response_body())
 
     def __repr__(self):
-        return "<Burp %d>" % self.index
+        return "<Burp [%d]>" % self.index
 
     def get_request_body(self):
         """
@@ -185,7 +204,7 @@ class Burp(object):
         @return: If header exists returns its value, else an empty string.
         @rtype: string
         """
-        return self._request['headers'].get(name.title(), default)
+        return self._request['headers'].get(name, default)
 
     def get_request_headers(self):
         """
@@ -236,7 +255,7 @@ class Burp(object):
         @return: If header exists return its value, else an empty string.
         @rtype: string
         """
-        return self._response['headers'].get(name.title(), default)
+        return self._response['headers'].get(name, default)
 
     def get_response_headers(self):
         """
@@ -253,7 +272,6 @@ class Burp(object):
         @rtype: string
         """
         return self._response['body']
-
 
     # request helper property's
     body = property(get_request_body)
@@ -332,55 +350,3 @@ class Burp(object):
         """
         return self.method == "TRACE"
 
-
-class Scanner(object):
-    def __init__(self):
-        # Reference implementation using httplib2
-        #
-        #self.conn = httplib2.Http()
-        pass
-
-    def replay(self, request, url=None, method=None, body=None, headers=None):
-        """
-        Replay a Burp object, appending the result as a Burp object to the
-        original replayed list.
-
-        @param request: A gds.pub.burp.Burp object.
-        @param url: URL to override request's original url.
-        @param method: Method to override request's original request method.
-        @param body: Body to override request's original request body.
-        @param headers: Headers to override request's original request body.
-        """
-        if url is None:
-            url = request.url.geturl()
-        if method is None:
-            method = request.get_request_method()
-        if body is None:
-            body = request.get_request_body()
-        if headers is None:
-            headers = copy.deepcopy(request.get_request_headers())
-
-        if method == "POST" and body:
-            headers.update({"Content-Length": str(len(body))})
-
-        # Reference implementation using httplib2
-        #
-        #response, body = self.conn.request(request.url.geturl(),
-        #                                   request.get_request_method(),
-        #                                   request.get_request_body(),
-        #                                   request.get_request_headers())
-        #
-        #burpobj = Burp({'request': {'body': body,
-        #                            'method': method,
-        #                            'path': path,
-        #                            'version': 'HTTP/1.1'},
-        #                'response': {'status': response.status,
-        #                             'reason': response.reason,
-        #                             'version': "HTTP/%.1f" % (float(response.version)/10)},
-        #                'index': 0})
-        #
-        #burpobj.request['headers'] = headers
-        #burpobj.response['headers'] = response
-        #burpobj.response['body'] = body
-        #burpobj.url = urlparse(url)
-        #request.replayed.append(burpobj)
