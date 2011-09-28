@@ -130,8 +130,15 @@ class Burp(object):
 
         self.url = urlparse(urljoin(self.host, self._request.get('path', '/')))
         self.parameters = parse_parameters(self)
+
         logger.debug("Loading cookies: %s", self.get_request_header('Cookie'))
-        self.cookies.load(self.get_request_header('Cookie'))
+
+        try:
+            self.cookies.load(self.get_request_header('Cookie'))
+        except Cookie.CookieError:
+            logger.exception("Failed to load Cookie: %r into cookie jar",
+                             self.get_request_header('Cookie'))
+
         if self.cookies:
             logger.debug("Added following cookies: %s",
                          ', '.join(self.cookies.keys()))
@@ -142,14 +149,16 @@ class Burp(object):
         if self.get_response_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_response_header(HTTP_CONTENT_LENGTH))
             if len(self) != content_length:
-                #logger.debug("Response content-length differs by %d", len(self) - content_length)
+                #logger.debug("Response content-length differs by %d",
+                #             len(self) - content_length)
                 self._response['body'] = self._response['body'][:content_length]
 
         if self.get_request_header(HTTP_CONTENT_LENGTH):
             content_length = int(self.get_request_header(HTTP_CONTENT_LENGTH))
-            if len(self.get_request_body()) != content_length and 'amf' not in \
-                self.get_request_header(HTTP_CONTENT_LENGTH):
-                #logger.debug("Request content-length differs by %d", len(self.get_request_body()) - content_length)
+            if len(self.get_request_body()) != content_length and \
+                'amf' not in self.get_request_header(HTTP_CONTENT_TYPE):
+                #logger.debug("Request content-length differs by %d",
+                #             len(self.get_request_body()) - content_length)
                 self._request['body'] = self._request['body'][:content_length]
 
     def __len__(self):
@@ -160,7 +169,7 @@ class Burp(object):
         return len(self.get_response_body())
 
     def __repr__(self):
-        return "<Burp %d>" % self.index
+        return "<Burp [%d]>" % self.index
 
     def get_request_body(self):
         """
