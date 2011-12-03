@@ -26,13 +26,14 @@ along with GDS Burp API.  If not, see <http://www.gnu.org/licenses/>
 """
 from .multipart import HTMLMultipartForm, HTMLMultipartParam
 from .structures import CaseInsensitiveDict
-import cgi
-import logging
+from urlparse import parse_qs
 import cPickle
+import cgi
 import gzip
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 try:
@@ -78,7 +79,7 @@ def parse_parameters(request):
     parameters = {}
 
     if request.url.query:
-        parameters['query'] = dict(cgi.parse_qsl(request.url.query))
+        parameters['query'] = parse_qs(request.url.query)
 
     content_type = request.get_request_header('Content-Type').lower()
     content_type, params = cgi.parse_header(content_type)
@@ -86,12 +87,12 @@ def parse_parameters(request):
 
     if params.get('charset'):
         try:
-            body = body.decode(params.get('charset'))
+            body = body.decode(params.get('charset'), 'ignore')
         except UnicodeDecodeError:
             pass
 
     if content_type == FORM_CONTENT_TYPE:
-        parameters['body'] = dict(cgi.parse_qsl(body))
+        parameters['body'] = parse_qs(body)
 
     elif content_type in (JSON_CONTENT_TYPE,
                           'application/x-javascript',
